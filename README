@@ -1,0 +1,92 @@
+
+
+##### Set this file to full screen #####
+
+
+Instructions on how to run the Simetra pipeline. 
+The core code to run matched filter is in the simetra directory. 
+Secondary files are in the auxiliary directory; these are "post-processing" files after the matched filter calculation is done. 
+Scripts to submit Simetra jobs to grid engine on the MIT eor computers are in the qsubeor directory; these are fine-tuned to the MIT computers and can be finicky. 
+
+Simetra Python dependencies: 
+1. optparse, glob, logging, sys
+2. numpy, astropy, matplotlib
+3. simetra, injection, mfilter
+
+
+--------------------------------------------------matched filter background/playground/search runs--------------------------------------------------
+
+
+1. To avoid I/O bottleneck, convert the fits images into npz files. 
+   Do NOT rename the npz files because the matched filter calculation will look for these files! 
+	python artemis.py -i [im.list] -b [bm.list] -s [500,586,672,758] -w
+   To get all options, run: 
+	python artemis.py -h
+   example [im.list]: /nfs/mwa-03/d1/lufeng/pixy/fullset/clean/180MHz_XX_clean_v2/im.list
+   example [bm.list]: /nfs/mwa-03/d1/lufeng/pixy/fullset/clean/180MHz_XX_clean_v2/bm.list
+   example [pix.list] for pixarray [500,586,672,758]: /nfs/mwa-03/d1/lufeng/pixy/fullset/clean/180MHz_XX_clean_v2/1_pix.list
+>> MIT eor computers: see also qsub_ioconversion.sh
+
+
+2. Run the matched filter calculation over many templates. 
+	python artemis.py -s [500,586,672,758] -o [output.fits] -d [120]
+>> MIT eor computers: see also submit.sh, which needs artconfig.txt and calls artbatch.sh, which calls qsub_artemis_list.sh, which calls artemis.py
+>> you can run artbatch.sh by itself without using submit.sh
+
+
+--------------------------------------------------post-processing--------------------------------------------------
+
+
+3. If you split the images into many sub-images, join the fits files output by @artemis.
+	ls -v [output*.fits] > [files.list]
+	python join_tables.py -o [joined.fits] [files.list]
+   To get all options, run: 
+	python join_tables.py -h
+
+
+4. If you want to mask pixels, create a fits file with the same dimensions as the images in Step 1. (The easiest way is to make a copy.) 
+   Then set the pixels you want to mask to 1 and the others to 0. 
+   example mask file: /nfs/eor-00/mwa/lufeng/toolkit/transients/mask_pixels.py
+
+
+5. If you have masked pixels, convert the fits file from Step 4 into a fits table. Then join it with the output file from Step 3. 
+   *** IMPORTANT *** sub-image pixel file list in the command line below must be in the same order as that for Steps 1 and 3. 
+	python mpix2tb.py -i [mask_image.fits] -o [mask_table.fits] [137_pix.list 138_pix.list 139_pix.list 140_pix.list 141_pix.list]
+	python join_tables_vmask.py -i [joined.fits] -m [mask_table.fits] -o [joined_masked.fits]
+   To get all options, run: 
+	python mpix2tb.py -h
+	python join_tables_vmask.py -h
+
+
+6. Fit for the false alarm probability. 
+   a) background/playground check, b) background to search threshold, c) background/search comparison
+	a. python fit_false_alarm.py -i [background.fits] -s -l -b [16] -n [86492] -t [100] -a [playground.fits] -o [output.png]
+	b. python fit_false_alarm.py -i [background.fits] -s -l -b [16] -n [2700925] -t [100] -o [threshold.png]
+	c. python fit_false_alarm.py -i [background.fits] -s -l -b [16] -n [2700925] -t [100] -a [search.fits] -o [output.png] -r [16]
+   To get all options, run: 
+	python fit_false_alarm.py -h
+
+
+--------------------------------------------------matched filter injection run--------------------------------------------------
+
+
+7. To run injection, create the injection files. 
+	python injection.py -i [first_image.fits],[last_image.fits] -o [inj.npz] -n [86] -a [uniform] -d [uniform] -p [uniform] -m [0.15] -t [fred]
+   To get all options, run: 
+	python injection.py -h
+   *** NOTE *** the options -b, -e, -q are used with the "special" distribution and are NOT robust
+>> MIT eor computers: see also geninj.sh
+
+
+8. Run matched filter calculation with injection. Then repeat Step 3 separately for the lists of inj*.fits and inj*_istore.fits, which stores injection parameters. 
+	python artemis.py -s [500,586,672,758] -o [inj.fits] -j -f [inj.npz] -d [120]
+
+
+--------------------------------------------------extra--------------------------------------------------
+
+
+9. Convert the rho fits table into a rho fits image. 
+	python rho2fits.py -i [joined_masked.fits] -o [rhosky.fits] -f
+   To get all options, run: 
+	python rho2fits.py -h
+

@@ -1,0 +1,5 @@
+RUNNAME="test"
+PIXFILE="pix.list"
+TEMPLATE=-1         # template id, -1 for full iteration
+DURATION=600        # duration shift in sec
+INJFILE="none"      # injection npz file
